@@ -12,6 +12,35 @@ cat ~/.ssh/id_ed25519.pub >> keys/authorized.pub   # your key
 ./push.sh web-1 web-2                              # roll out
 ```
 
+## Run from a release
+
+The source tarball carries `keys/`, so it is the whole install:
+
+```bash
+mkdir -p /tmp/bs
+curl -fsSL https://github.com/config42/bootstrap/archive/refs/tags/v1.0.0.tar.gz \
+  | tar xz --strip-components=1 -C /tmp/bs
+/tmp/bs/bootstrap.sh
+```
+
+`--strip-components=1` avoids depending on the extracted directory name — GitHub
+drops the leading `v`, so tag `v1.0.0` becomes `bootstrap-1.0.0/`. Latest release
+instead of a pinned tag:
+
+```bash
+gh release download -R config42/bootstrap -A tar.gz -O - | tar xz --strip-components=1 -C /tmp/bs
+```
+
+Pin the tag for real rollouts.
+
+**`curl .../bootstrap.sh | sh` does not work alone.** The script reads `keys/`
+beside itself and stops with `public key file not found`. Fetch the tarball, or
+use `push.sh` — it streams the script and keys over your existing ssh connection
+and needs nothing on the far end.
+
+Keys are baked into the tarball at release time, so rotating them means cutting a
+new release. `push.sh` always sends your current working copy.
+
 ## Files
 
 | File | Purpose |
