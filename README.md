@@ -113,30 +113,42 @@ Re-running rewrites the block wholesale, so deleting a line revokes that access.
 
 ## Releasing
 
-Version lives in `VERSION=` at the top of `bootstrap.sh` and `ca.sh`. Bump both:
+`VERSION=` at the top of `bootstrap.sh` and `ca.sh` must match the tag. Current
+release: **v1.0.0**.
 
 ```bash
-V=1.1.0; sed -i '' "s/^VERSION=.*/VERSION=$V/" bootstrap.sh ca.sh
-```
-
-Then commit, tag, publish:
-
-```bash
-git commit -am "Release v1.1.0"
-git tag -a v1.1.0 -m "v1.1.0" && git push && git push origin v1.1.0
-git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz v1.1.0
-gh release create v1.1.0 --generate-notes bootstrap.tar.gz
+git tag -a v1.0.0 -m "v1.0.0" && git push && git push origin v1.0.0
+git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz v1.0.0
+gh release create v1.0.0 --generate-notes bootstrap.tar.gz
 ```
 
 The attached `bootstrap.tar.gz` keeps its filename across releases, which is what
 makes the `releases/latest/download/` URL above stable. Don't version the
-filename.
+filename. To add it to a release that already exists:
 
-- GNU sed is `sed -i` (no `''`).
+```bash
+git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz v1.0.0
+gh release upload v1.0.0 bootstrap.tar.gz
+```
+
+Until that asset exists the `releases/latest/download/` URL returns 404. The
+pinned-tag and `main` URLs work either way.
+
 - `--draft` stages the release for review instead of publishing.
 - `--notes-file NOTES.md` replaces the auto-generated commit list.
-- Semver: patch for fixes, minor for new flags, major for a changed managed-block
-  format (endpoints need re-running).
+
+### Bumping
+
+Only when cutting a *new* version. Bump both files, commit, then repeat the
+release steps with the new tag:
+
+```bash
+V=1.1.0; sed -i '' "s/^VERSION=.*/VERSION=$V/" bootstrap.sh ca.sh   # GNU sed: -i
+git commit -am "Release v$V"
+```
+
+Semver: patch for fixes, minor for new flags, major for a changed managed-block
+format (endpoints need re-running).
 
 ## Troubleshooting
 
