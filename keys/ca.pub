@@ -11,3 +11,4 @@
 #
 # Every certificate this CA signed is then accepted, until it expires or the
 # principal no longer matches. One line per CA; blank lines and # are ignored.
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMU+be9Eft0JnVMUICvDS0oRz9kW6NFjZu0FMih/vDtP cp-agent-ssh-ca
