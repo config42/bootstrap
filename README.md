@@ -9,19 +9,19 @@ On one endpoint:
 
 ```bash
 mkdir -p /tmp/bs
-curl -fsSL https://github.com/config42/bootstrap/archive/refs/tags/v1.0.0.tar.gz \
+curl -fsSL https://github.com/config42/bootstrap/releases/latest/download/bootstrap.tar.gz \
   | tar xz --strip-components=1 -C /tmp/bs
 /tmp/bs/bootstrap.sh
 ```
 
-Add `--dry-run` to preview, `--system` for host-wide CA trust (needs root),
-`--remove` to undo.
-
-Across a fleet, from a clone — streams your current keys over ssh, needs nothing
-installed on the far end:
-
+## Deploy Across Fleet
 ```bash
-./push.sh web-1 web-2 db-1
+/tmp/bs/push.sh web-1 web-2 db-1
+```
+
+## Uninstall
+```bash
+/tmp/bs/bootstrap.sh --remove
 ```
 
 Other URLs: `releases/latest/download/bootstrap.tar.gz` for the latest release
@@ -34,19 +34,12 @@ Everything else is in `./bootstrap.sh --help` and `./ca.sh --help`. Key files:
 
 ## Release
 
-`VERSION=` in `bootstrap.sh` and `ca.sh` must match the tag. Current: **v1.0.0**.
+`VERSION=` in `bootstrap.sh` and `ca.sh` must match the tag.
 
 ```bash
-V=1.1.0
-sed -i '' "s/^VERSION=.*/VERSION=$V/" bootstrap.sh ca.sh    # GNU sed: drop the ''
-git commit -am "Release v$V"
+V=1.0.0
+sed -i '' "s/^VERSION=.*/VERSION=$V/" bootstrap.sh ca.sh
 git tag -a "v$V" -m "v$V" && git push && git push origin "v$V"
 git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz "v$V"
 gh release create "v$V" --generate-notes bootstrap.tar.gz
 ```
-
-`bootstrap.tar.gz` must keep the same filename every release — that is what makes
-the `releases/latest/download/` URL stable. Without it that URL 404s; attach one
-to an existing release with `gh release upload v1.0.0 bootstrap.tar.gz`.
-
-`--draft` stages the release for review instead of publishing.
