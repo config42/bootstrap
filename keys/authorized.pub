@@ -1,0 +1,8 @@
+# bootstrap-ssh — public key(s) to install into authorized_keys.
+#
+# Paste one SSH public key per line, exactly as it appears in a .pub file:
+#
+#   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... chintan@laptop
+#
+# Public keys only. Never put a private key or a certificate here.
+# Blank lines and #-comments are ignored.

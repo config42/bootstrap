@@ -1,0 +1,13 @@
+# bootstrap-ssh — SSH certificate authority public key(s) to trust.
+#
+# This is the *CA's* public key: the .pub file sitting next to the private key
+# you sign certificates with. It is NOT your certificate.
+#
+#   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... my-ssh-ca
+#
+# A certificate only carries its issuer's fingerprint, not the issuer's key, so
+# the CA key cannot be recovered from a cert — it has to be copied here.
+# Get it from the CA host with:  cat /path/to/ssh_ca.pub
+#
+# Every certificate this CA signed is then accepted, until it expires or the
+# principal no longer matches. One line per CA; blank lines and # are ignored.
