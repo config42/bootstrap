@@ -6,7 +6,8 @@
 # Safe to run repeatedly: it converges the box to the desired state and reports
 # "unchanged" when there is nothing to do.
 #
-# Supports Linux (systemd, OpenRC, SysV) and macOS.
+# Supports Linux (systemd, OpenRC, SysV) and macOS. --push runs it on remote
+# hosts over ssh instead of locally.
 
 set -eu
 
@@ -92,13 +93,15 @@ OPTIONS
         --remove       Undo: strip the managed blocks and system CA file
     -n, --dry-run      Show what would change, touch nothing
     -q, --quiet        Only warnings and errors
+    -p, --push HOST... Run this on remote hosts over ssh instead of locally.
+                       Consumes the rest of argv; try --push --help.
     -h, --help         This text
 
 EXAMPLES
-    ./bootstrap.sh                      # per-user trust, no root needed
-    sudo ./bootstrap.sh -u deploy -s    # user + host-wide CA trust
-    ./bootstrap.sh --dry-run            # preview
-    ./push.sh web-1 web-2 -- --system   # run it on several hosts
+    ./bootstrap.sh                          # per-user trust, no root needed
+    sudo ./bootstrap.sh -u deploy -s        # user + host-wide CA trust
+    ./bootstrap.sh --dry-run                # preview
+    ./bootstrap.sh --push web-1 web-2 -- --system   # on several hosts
 HELPTEXT
 }
 
@@ -238,7 +241,107 @@ remove_block() {
     return 0
 }
 
+# ------------------------------------------------------------------- push ----
+#
+# Run this same install on remote hosts over ssh instead of locally. Consumes
+# the rest of argv itself (host list, ssh options, -- bootstrap args) and
+# always exits rather than returning.
+
+do_push() {
+    _self=$0
+    _script_name=$(basename -- "$_self")
+    _use_sudo=0
+    _read_stdin=0
+    _hosts=""
+    _boot_args=""
+    _failed=""
+    _ssh_opts="-o ConnectTimeout=10"
+
+    [ -f "$_self" ] || die "--push needs to run from a saved file, not a pipe.
+Save one first:  curl -fsSL <install.sh URL> -o install.sh && sh install.sh --push ..."
+
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --sudo) _use_sudo=1; shift ;;
+            -)      _read_stdin=1; shift ;;
+            --)     shift; _boot_args="$*"; break ;;
+            -h|--help)
+                cat <<PUSHHELP
+$PROG $VERSION --push — run this install on remote hosts over ssh.
+
+USAGE
+    $0 --push HOST [HOST...] [--sudo] [-- bootstrap args]
+    cat hosts.txt | $0 --push - [--sudo]
+
+    --sudo         Run the remote install under sudo (implied by --system)
+    -h, --help     This text
+
+Any other -flag is forwarded to ssh (e.g. -i key, -p 2222). Args after --
+go to the remote install, e.g. --push web-1 -- --system.
+
+Streamed over the existing ssh connection into a temporary location on the
+remote, run, and removed. From a clone (keys/ present) this needs tar on
+the far end too; a standalone install.sh needs nothing but ssh and sh.
+PUSHHELP
+                exit 0 ;;
+            -*)     _ssh_opts="$_ssh_opts $1"; shift ;;
+            *)      _hosts="$_hosts $1"; shift ;;
+        esac
+    done
+
+    [ "$_read_stdin" -eq 1 ] && _hosts="$_hosts $(cat)"
+    [ -n "$(printf '%s' "$_hosts" | tr -d ' ')" ] ||
+        die "--push needs at least one host (or - to read hosts from stdin)"
+
+    # --system needs root on the far side too.
+    case " $_boot_args " in *" --system "*|*" -s "*) _use_sudo=1 ;; esac
+
+    _prefix=""; _tty=""
+    if [ "$_use_sudo" -eq 1 ]; then
+        _prefix="sudo -p 'sudo password for %u@%H: '"
+        _tty="-t"   # so sudo and any host-key prompt can reach the terminal
+    fi
+
+    for _host in $_hosts; do
+        printf '\n\033[1m===== %s =====\033[0m\n' "$_host"
+        if [ -d "$SELF_DIR/keys" ]; then
+            # shellcheck disable=SC2086
+            if tar cf - -C "$SELF_DIR" "$_script_name" keys |
+               ssh $_tty $_ssh_opts "$_host" \
+                   "set -e
+                    d=\$(mktemp -d) && trap 'rm -rf \"\$d\"' EXIT INT TERM
+                    tar xf - -C \"\$d\"
+                    $_prefix sh \"\$d/$_script_name\" $_boot_args"
+            then :; else
+                _failed="$_failed $_host"
+                printf '\033[31mFAILED: %s\033[0m\n' "$_host" >&2
+            fi
+        else
+            # Self-contained (install.sh): no keys/ to ship separately, so
+            # stream the script itself straight into a remote shell.
+            # shellcheck disable=SC2086
+            if ssh $_tty $_ssh_opts "$_host" \
+                   "set -e; $_prefix sh -s -- $_boot_args" < "$_self"
+            then :; else
+                _failed="$_failed $_host"
+                printf '\033[31mFAILED: %s\033[0m\n' "$_host" >&2
+            fi
+        fi
+    done
+
+    if [ -n "$_failed" ]; then
+        printf '\n\033[31mFailed on:%s\033[0m\n' "$_failed" >&2
+        exit 1
+    fi
+    printf '\n\033[32mAll hosts bootstrapped.\033[0m\n'
+    exit 0
+}
+
 # ------------------------------------------------------------------- args ----
+
+case ${1:-} in
+    -p|--push) shift; do_push "$@" ;;   # do_push always exits, never returns
+esac
 
 while [ $# -gt 0 ]; do
     case $1 in
@@ -259,6 +362,7 @@ done
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-ssh.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM
+# build.sh: embedded keys/, if any, are spliced in right after this line.
 
 : "${KEY_FILE:=$SELF_DIR/keys/authorized.pub}"
 : "${CA_FILE:=$SELF_DIR/keys/ca.pub}"

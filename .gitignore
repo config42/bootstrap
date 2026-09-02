@@ -10,3 +10,5 @@
 *.bak.[0-9]*
 # Release asset, built by `git archive` at release time.
 bootstrap.tar.gz
+# Release asset, built by `build.sh` at release time.
+install.sh

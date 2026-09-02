@@ -141,7 +141,7 @@ cmd_init() {
     say "  1. Issue yourself a certificate:"
     say "       ./ca.sh sign ~/.ssh/id_ed25519.pub -n dispatch,admin,root"
     say "  2. Add your public key to keys/authorized.pub (fallback access)"
-    say "  3. Roll it out:   ./push.sh <host>..."
+    say "  3. Roll it out:   ./bootstrap.sh --push <host>..."
     say ""
     say "${C_WARN}Back up $CA_KEY somewhere offline.${C_0} Losing it means"
     say "re-bootstrapping every endpoint; leaking it means anyone can log in as you."
