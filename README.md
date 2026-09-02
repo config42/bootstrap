@@ -3,18 +3,9 @@
 Idempotent SSH access bootstrapping for Linux servers and Macs. Installs your
 public key, trusts your SSH CA. Safe to re-run.
 
-## Quick start
+## Run
 
-```bash
-cat ~/.ssh/id_ed25519.pub >> keys/authorized.pub   # your key
-./ca.sh init                                       # create a CA (or paste an existing one into keys/ca.pub)
-./bootstrap.sh --dry-run                           # preview
-./push.sh web-1 web-2                              # roll out
-```
-
-## Run from a release
-
-The source tarball carries `keys/`, so it is the whole install. Pinned to a tag:
+On one endpoint:
 
 ```bash
 mkdir -p /tmp/bs
@@ -23,153 +14,39 @@ curl -fsSL https://github.com/config42/bootstrap/archive/refs/tags/v1.0.0.tar.gz
 /tmp/bs/bootstrap.sh
 ```
 
-Always the latest release:
+Add `--dry-run` to preview, `--system` for host-wide CA trust (needs root),
+`--remove` to undo.
+
+Across a fleet, from a clone — streams your current keys over ssh, needs nothing
+installed on the far end:
 
 ```bash
-curl -fsSL https://github.com/config42/bootstrap/releases/latest/download/bootstrap.tar.gz \
-  | tar xz --strip-components=1 -C /tmp/bs
+./push.sh web-1 web-2 db-1
 ```
 
-That redirect serves **uploaded assets only**, not GitHub's auto-generated source
-tarball — [Releasing](#releasing) attaches one under a stable filename to make it
-work.
+Other URLs: `releases/latest/download/bootstrap.tar.gz` for the latest release
+(requires the attached asset — see below), `archive/refs/heads/main.tar.gz` for
+the latest commit. `curl .../bootstrap.sh | sh` does **not** work: the script
+reads `keys/` beside itself.
 
-| URL | Points at | Needs |
-| --- | --- | --- |
-| `releases/latest/download/bootstrap.tar.gz` | Latest release | The uploaded asset |
-| `archive/refs/tags/v1.0.0.tar.gz` | That exact tag | Nothing |
-| `archive/refs/heads/main.tar.gz` | Latest commit on `main` | Nothing |
-| `gh release download -R config42/bootstrap -A tar.gz -O -` | Latest release | `gh` on the endpoint |
+Everything else is in `./bootstrap.sh --help` and `./ca.sh --help`. Key files:
+[keys/README.md](keys/README.md).
 
-`latest` skips drafts and prereleases, and 404s until a release exists. Pin the
-tag for rollouts you want to be able to repeat exactly.
+## Release
 
-`--strip-components=1` avoids depending on the extracted directory name — GitHub
-drops the leading `v`, so tag `v1.0.0` becomes `bootstrap-1.0.0/`.
-
-**`curl .../bootstrap.sh | sh` does not work alone.** The script reads `keys/`
-beside itself and stops with `public key file not found`. Fetch the tarball, or
-use `push.sh` — it streams the script and keys over your existing ssh connection
-and needs nothing on the far end.
-
-Keys are baked into the tarball at release time, so rotating them means cutting a
-new release. `push.sh` always sends your current working copy.
-
-## Files
-
-| File | Purpose |
-| --- | --- |
-| `bootstrap.sh` | Installs the keys. Runs on the endpoint. |
-| `push.sh` | Runs `bootstrap.sh` across hosts over ssh. |
-| `ca.sh` | Creates the CA, issues certificates. |
-| `keys/` | Your public key + CA public key. See [keys/README.md](keys/README.md). |
-
-## What it writes
-
-One marked block in `~/.ssh/authorized_keys`:
-
-```
-# >>> bootstrap-ssh managed block >>>
-ssh-ed25519 AAAA... you@laptop
-cert-authority ssh-ed25519 AAAA... your-ca
-# <<< bootstrap-ssh managed block <<<
-```
-
-Lines outside the markers are never touched. The `cert-authority` prefix is what
-makes certificates work. **No root required.**
-
-`--system` additionally sets `TrustedUserCAKeys` in sshd, trusting the CA for
-every account on the host. Needs root. Prefers a `sshd_config.d` drop-in, runs
-`sshd -t` before reloading, and rolls back if sshd rejects the config.
-
-## Options
-
-```
--u, --user USER    Target user (default: $SUDO_USER, else you)
--k, --key FILE     Public key file    (default: keys/authorized.pub)
--c, --ca FILE      CA public key file (default: keys/ca.pub)
--s, --system       Host-wide CA trust via TrustedUserCAKeys (root)
-    --no-reload    Edit sshd config but don't reload
-    --remove       Undo everything
--n, --dry-run      Preview
--q, --quiet        Warnings and errors only
-```
-
-## Certificates
+`VERSION=` in `bootstrap.sh` and `ca.sh` must match the tag. Current: **v1.0.0**.
 
 ```bash
-./ca.sh init                                        # create CA, publish keys/ca.pub
-./ca.sh sign ~/.ssh/id_ed25519.pub -n admin,root    # issue a cert
-./ca.sh show ~/.ssh/id_ed25519-cert.pub             # inspect
-```
-
-The CA private key goes in `~/.ssh/ca/`, never the repo — `init` refuses to
-create it inside a git work tree. `-n` principals are the usernames the cert may
-log in as, and are required. Default lifetime is 12 weeks (`-V +1d` for
-short-lived). Each cert gets a serial so it can be revoked via a KRL.
-
-`keys/ca.pub` takes one line per CA; `keys/authorized.pub` one per device.
-Re-running rewrites the block wholesale, so deleting a line revokes that access.
-
-## Releasing
-
-`VERSION=` at the top of `bootstrap.sh` and `ca.sh` must match the tag. Current
-release: **v1.0.0**.
-
-```bash
-git tag -a v1.0.0 -m "v1.0.0" && git push && git push origin v1.0.0
-git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz v1.0.0
-gh release create v1.0.0 --generate-notes bootstrap.tar.gz
-```
-
-The attached `bootstrap.tar.gz` keeps its filename across releases, which is what
-makes the `releases/latest/download/` URL above stable. Don't version the
-filename. To add it to a release that already exists:
-
-```bash
-git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz v1.0.0
-gh release upload v1.0.0 bootstrap.tar.gz
-```
-
-Until that asset exists the `releases/latest/download/` URL returns 404. The
-pinned-tag and `main` URLs work either way.
-
-- `--draft` stages the release for review instead of publishing.
-- `--notes-file NOTES.md` replaces the auto-generated commit list.
-
-### Bumping
-
-Only when cutting a *new* version. Bump both files, commit, then repeat the
-release steps with the new tag:
-
-```bash
-V=1.1.0; sed -i '' "s/^VERSION=.*/VERSION=$V/" bootstrap.sh ca.sh   # GNU sed: -i
+V=1.1.0
+sed -i '' "s/^VERSION=.*/VERSION=$V/" bootstrap.sh ca.sh    # GNU sed: drop the ''
 git commit -am "Release v$V"
+git tag -a "v$V" -m "v$V" && git push && git push origin "v$V"
+git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz "v$V"
+gh release create "v$V" --generate-notes bootstrap.tar.gz
 ```
 
-Semver: patch for fixes, minor for new flags, major for a changed managed-block
-format (endpoints need re-running).
+`bootstrap.tar.gz` must keep the same filename every release — that is what makes
+the `releases/latest/download/` URL stable. Without it that URL 404s; attach one
+to an existing release with `gh release upload v1.0.0 bootstrap.tar.gz`.
 
-## Troubleshooting
-
-Key installed but login still fails:
-
-| Cause | Fix |
-| --- | --- |
-| SELinux labels | Run once as root; it calls `restorecon` |
-| Home is group-writable | `chmod go-w ~` — sshd `StrictModes` ignores the keys otherwise |
-| Relocated `AuthorizedKeysFile` | sshd is reading a different file |
-| macOS: Remote Login off | System Settings → General → Sharing |
-| macOS: user not in `com.apple.access_ssh` | `sudo dseditgroup -o edit -a USER -t user com.apple.access_ssh` |
-| Cert refused | Principal must match the login username; check expiry with `ca.sh show` |
-
-`bootstrap.sh` checks and reports all of these itself.
-
-## Notes
-
-- POSIX `sh` — runs under dash, BusyBox ash, and macOS bash 3.2.
-- Every change writes a `*.bak.<timestamp>` beside the file. Idempotent runs make
-  no backups.
-- `--remove` strips the managed blocks and system CA file. It leaves copies of
-  your key found *outside* the block; the script warns when it sees one.
-- `BOOTSTRAP_SSH_PREFIX=/tmp/fake` redirects every `/etc` path for testing.
+`--draft` stages the release for review instead of publishing.
