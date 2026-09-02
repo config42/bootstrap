@@ -8,3 +8,5 @@
 !*.pub
 # Backups bootstrap.sh leaves beside a file it edits.
 *.bak.[0-9]*
+# Release asset, built by `git archive` at release time.
+bootstrap.tar.gz

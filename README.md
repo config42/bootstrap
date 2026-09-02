@@ -14,7 +14,7 @@ cat ~/.ssh/id_ed25519.pub >> keys/authorized.pub   # your key
 
 ## Run from a release
 
-The source tarball carries `keys/`, so it is the whole install:
+The source tarball carries `keys/`, so it is the whole install. Pinned to a tag:
 
 ```bash
 mkdir -p /tmp/bs
@@ -23,15 +23,29 @@ curl -fsSL https://github.com/config42/bootstrap/archive/refs/tags/v1.0.0.tar.gz
 /tmp/bs/bootstrap.sh
 ```
 
-`--strip-components=1` avoids depending on the extracted directory name — GitHub
-drops the leading `v`, so tag `v1.0.0` becomes `bootstrap-1.0.0/`. Latest release
-instead of a pinned tag:
+Always the latest release:
 
 ```bash
-gh release download -R config42/bootstrap -A tar.gz -O - | tar xz --strip-components=1 -C /tmp/bs
+curl -fsSL https://github.com/config42/bootstrap/releases/latest/download/bootstrap.tar.gz \
+  | tar xz --strip-components=1 -C /tmp/bs
 ```
 
-Pin the tag for real rollouts.
+That redirect serves **uploaded assets only**, not GitHub's auto-generated source
+tarball — [Releasing](#releasing) attaches one under a stable filename to make it
+work.
+
+| URL | Points at | Needs |
+| --- | --- | --- |
+| `releases/latest/download/bootstrap.tar.gz` | Latest release | The uploaded asset |
+| `archive/refs/tags/v1.0.0.tar.gz` | That exact tag | Nothing |
+| `archive/refs/heads/main.tar.gz` | Latest commit on `main` | Nothing |
+| `gh release download -R config42/bootstrap -A tar.gz -O -` | Latest release | `gh` on the endpoint |
+
+`latest` skips drafts and prereleases, and 404s until a release exists. Pin the
+tag for rollouts you want to be able to repeat exactly.
+
+`--strip-components=1` avoids depending on the extracted directory name — GitHub
+drops the leading `v`, so tag `v1.0.0` becomes `bootstrap-1.0.0/`.
 
 **`curl .../bootstrap.sh | sh` does not work alone.** The script reads `keys/`
 beside itself and stops with `public key file not found`. Fetch the tarball, or
@@ -110,8 +124,13 @@ Then commit, tag, publish:
 ```bash
 git commit -am "Release v1.1.0"
 git tag -a v1.1.0 -m "v1.1.0" && git push && git push origin v1.1.0
-gh release create v1.1.0 --generate-notes
+git archive --format=tar.gz --prefix=bootstrap/ -o bootstrap.tar.gz v1.1.0
+gh release create v1.1.0 --generate-notes bootstrap.tar.gz
 ```
+
+The attached `bootstrap.tar.gz` keeps its filename across releases, which is what
+makes the `releases/latest/download/` URL above stable. Don't version the
+filename.
 
 - GNU sed is `sed -i` (no `''`).
 - `--draft` stages the release for review instead of publishing.
